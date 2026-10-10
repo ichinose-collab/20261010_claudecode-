@@ -8,5 +8,5 @@
 
 ## このリポジトリについて
 - `index.html`：シンプルタイマーサイト（タイマー＋ストップウォッチ）。外部ライブラリなしの1ファイル構成。
-- GitHub Pages で `main` ブランチの `/ (root)` から公開中：https://ichinose-collab.github.io/20261010_claudecode-/
+- GitHub Pages で `main` ブランチの `/ (root)` から公開中：https://ichinose-collab.github.io/timer/
 - `main` にマージされた変更は、1〜2分で公開サイトに自動反映されます。
