@@ -1,4 +1,4 @@
-# 20261010_claudecode-
+# timer
 
 Claude Code（クラウド環境）で使うためのリポジトリです。
 
