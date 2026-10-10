@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>シンプルタイマー</title>
+  <style>
+    :root {
+      --bg: #f6f5f2;
+      --card: #ffffff;
+      --text: #222;
+      --muted: #777;
+      --accent: #f36c21;
+      --border: #e3e0da;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #17171a;
+        --card: #222226;
+        --text: #eee;
+        --muted: #999;
+        --border: #34343a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      padding: 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+    }
+    h1 { font-size: 1.2rem; margin: 0 0 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tabs button { flex: 1; }
+    .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .display {
+      font-size: clamp(2.8rem, 14vw, 4rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      margin: 12px 0 20px;
+      letter-spacing: 0.02em;
+    }
+    .display.done { color: var(--accent); animation: blink 1s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0.3; } }
+    .inputs { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+    .inputs label { display: flex; flex-direction: column; font-size: 0.8rem; color: var(--muted); gap: 4px; }
+    .inputs input {
+      width: 72px; padding: 8px; font-size: 1.1rem; text-align: center;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg); color: var(--text);
+    }
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 16px; }
+    .presets button { padding: 6px 10px; font-size: 0.85rem; }
+    .controls { display: flex; gap: 8px; justify-content: center; }
+    button {
+      padding: 10px 18px;
+      font-size: 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .laps { list-style: none; padding: 0; margin: 16px 0 0; max-height: 180px; overflow-y: auto; text-align: left; }
+    .laps li { display: flex; justify-content: space-between; padding: 6px 4px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>シンプルタイマー</h1>
+    <div class="tabs">
+      <button id="tab-timer" class="active">タイマー</button>
+      <button id="tab-stopwatch">ストップウォッチ</button>
+    </div>
+
+    <section id="timer">
+      <div class="inputs">
+        <label>分<input id="min" type="number" min="0" max="999" value="5"></label>
+        <label>秒<input id="sec" type="number" min="0" max="59" value="0"></label>
+      </div>
+      <div class="presets">
+        <button data-sec="60">1分</button>
+        <button data-sec="180">3分</button>
+        <button data-sec="300">5分</button>
+        <button data-sec="600">10分</button>
+        <button data-sec="1500">25分</button>
+      </div>
+      <div id="timer-display" class="display">05:00</div>
+      <div class="controls">
+        <button id="timer-start" class="primary">スタート</button>
+        <button id="timer-reset">リセット</button>
+      </div>
+    </section>
+
+    <section id="stopwatch" class="hidden">
+      <div id="sw-display" class="display">00:00.00</div>
+      <div class="controls">
+        <button id="sw-start" class="primary">スタート</button>
+        <button id="sw-lap" disabled>ラップ</button>
+        <button id="sw-reset">リセット</button>
+      </div>
+      <ol id="laps" class="laps"></ol>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const pad = (n) => String(n).padStart(2, "0");
+
+    // タブ切り替え
+    const tabs = { timer: $("tab-timer"), stopwatch: $("tab-stopwatch") };
+    for (const [name, btn] of Object.entries(tabs)) {
+      btn.addEventListener("click", () => {
+        for (const [n, b] of Object.entries(tabs)) {
+          b.classList.toggle("active", n === name);
+          $(n).classList.toggle("hidden", n !== name);
+        }
+      });
+    }
+
+    // ---- タイマー ----
+    let remainingMs = 5 * 60 * 1000;
+    let endAt = null;
+    let timerTick = null;
+
+    function formatTimer(ms) {
+      const total = Math.ceil(ms / 1000);
+      return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+    }
+    function renderTimer() {
+      $("timer-display").textContent = formatTimer(remainingMs);
+      document.title = endAt ? `${formatTimer(remainingMs)} - タイマー` : "シンプルタイマー";
+    }
+    function readInputs() {
+      const m = Math.max(0, parseInt($("min").value, 10) || 0);
+      const s = Math.min(59, Math.max(0, parseInt($("sec").value, 10) || 0));
+      return (m * 60 + s) * 1000;
+    }
+    function setInputsDisabled(disabled) {
+      $("min").disabled = $("sec").disabled = disabled;
+      document.querySelectorAll(".presets button").forEach((b) => (b.disabled = disabled));
+    }
+    function beep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 0.4, 0.8].forEach((t) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.frequency.value = 880;
+          gain.gain.setValueAtTime(0.2, ctx.currentTime + t);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.3);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(ctx.currentTime + t);
+          osc.stop(ctx.currentTime + t + 0.3);
+        });
+      } catch (e) {}
+    }
+    function pauseTimer() {
+      clearInterval(timerTick);
+      timerTick = null;
+      endAt = null;
+      $("timer-start").textContent = "スタート";
+    }
+    function startTimer() {
+      if (remainingMs <= 0) return;
+      $("timer-display").classList.remove("done");
+      endAt = Date.now() + remainingMs;
+      setInputsDisabled(true);
+      $("timer-start").textContent = "一時停止";
+      timerTick = setInterval(() => {
+        remainingMs = Math.max(0, endAt - Date.now());
+        renderTimer();
+        if (remainingMs === 0) {
+          pauseTimer();
+          renderTimer();
+          $("timer-display").classList.add("done");
+          beep();
+        }
+      }, 100);
+    }
+    $("timer-start").addEventListener("click", () => (timerTick ? pauseTimer() : startTimer()));
+    $("timer-reset").addEventListener("click", () => {
+      pauseTimer();
+      setInputsDisabled(false);
+      $("timer-display").classList.remove("done");
+      remainingMs = readInputs();
+      renderTimer();
+    });
+    ["min", "sec"].forEach((id) =>
+      $(id).addEventListener("input", () => {
+        remainingMs = readInputs();
+        $("timer-display").classList.remove("done");
+        renderTimer();
+      })
+    );
+    document.querySelectorAll(".presets button").forEach((b) =>
+      b.addEventListener("click", () => {
+        const s = Number(b.dataset.sec);
+        $("min").value = Math.floor(s / 60);
+        $("sec").value = s % 60;
+        remainingMs = s * 1000;
+        $("timer-display").classList.remove("done");
+        renderTimer();
+      })
+    );
+
+    // ---- ストップウォッチ ----
+    let swElapsed = 0;
+    let swStartedAt = null;
+    let swFrame = null;
+    let lastLap = 0;
+
+    function formatSw(ms) {
+      const cs = Math.floor(ms / 10) % 100;
+      const s = Math.floor(ms / 1000) % 60;
+      const m = Math.floor(ms / 60000);
+      return `${pad(m)}:${pad(s)}.${pad(cs)}`;
+    }
+    function swNow() {
+      return swElapsed + (swStartedAt ? Date.now() - swStartedAt : 0);
+    }
+    function swLoop() {
+      $("sw-display").textContent = formatSw(swNow());
+      swFrame = requestAnimationFrame(swLoop);
+    }
+    $("sw-start").addEventListener("click", () => {
+      if (swStartedAt) {
+        swElapsed = swNow();
+        swStartedAt = null;
+        cancelAnimationFrame(swFrame);
+        $("sw-start").textContent = "スタート";
+        $("sw-lap").disabled = true;
+      } else {
+        swStartedAt = Date.now();
+        swLoop();
+        $("sw-start").textContent = "ストップ";
+        $("sw-lap").disabled = false;
+      }
+    });
+    $("sw-lap").addEventListener("click", () => {
+      const now = swNow();
+      const li = document.createElement("li");
+      const n = $("laps").children.length + 1;
+      li.innerHTML = `<span>ラップ ${n}</span><span>${formatSw(now - lastLap)}</span><span>${formatSw(now)}</span>`;
+      $("laps").prepend(li);
+      lastLap = now;
+    });
+    $("sw-reset").addEventListener("click", () => {
+      cancelAnimationFrame(swFrame);
+      swElapsed = 0;
+      swStartedAt = null;
+      lastLap = 0;
+      $("laps").innerHTML = "";
+      $("sw-display").textContent = formatSw(0);
+      $("sw-start").textContent = "スタート";
+      $("sw-lap").disabled = true;
+    });
+
+    renderTimer();
+  </script>
+</body>
+</html>
